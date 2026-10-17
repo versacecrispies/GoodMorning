@@ -4,11 +4,14 @@
 set -u
 zmodload zsh/datetime
 
-readonly VERSION="1.1.0"
+readonly VERSION="1.2.0"
+readonly PROGRAM_NAME="${0:t}"
 readonly STATE_FILE="/var/run/goodmorning.enabled"
 readonly CHECK_INTERVAL=5
 readonly MAX_RUNTIME=21600
 readonly MIN_BATTERY=20
+readonly SERVICE_LABEL="com.versacecrispies.goodmorning"
+readonly SERVICE_PLIST="/Library/LaunchDaemons/com.versacecrispies.goodmorning.plist"
 
 typeset -a DEDICATED_VIDEO_PLAYERS=(
   "TV" "com.apple.TV" "QuickTime Player" "VLC" "IINA" "mpv"
@@ -268,7 +271,61 @@ self_test() {
 }
 
 usage() {
-  print -- "GoodMorning ${VERSION}\nUsage: $0 {run|diagnose|--self-test}"
+  print -- "GoodMorning ${VERSION}
+Usage:
+  ${PROGRAM_NAME} diagnose          Check the current guard conditions
+  ${PROGRAM_NAME} status            Show whether the watchdog and override are active
+  sudo ${PROGRAM_NAME} on           Enable and start the watchdog
+  sudo ${PROGRAM_NAME} off          Stop and disable the watchdog
+  sudo ${PROGRAM_NAME} toggle       Switch the watchdog on or off
+  ${PROGRAM_NAME} --self-test       Run detection tests"
+}
+
+service_is_running() {
+  /bin/launchctl print "system/${SERVICE_LABEL}" >/dev/null 2>&1
+}
+
+service_status() {
+  local service_state="stopped" override_state="inactive"
+  service_is_running && service_state="running"
+  [[ -e "${STATE_FILE}" ]] && override_state="active"
+  print -- "watchdog=${service_state} sleep_override=${override_state}"
+}
+
+require_root_control() {
+  (( EUID == 0 )) || {
+    print -u2 -- "This command needs administrator access. Run: sudo ${PROGRAM_NAME} $1"
+    exit 77
+  }
+}
+
+service_on() {
+  require_root_control on
+  [[ -f "${SERVICE_PLIST}" ]] || {
+    print -u2 -- "GoodMorning is not installed. Run: sudo ./Scripts/install.sh"
+    exit 66
+  }
+  /bin/launchctl enable "system/${SERVICE_LABEL}"
+  if ! service_is_running; then
+    /bin/launchctl bootstrap system "${SERVICE_PLIST}"
+  fi
+  print "GoodMorning is on."
+  service_status
+}
+
+service_off() {
+  require_root_control off
+  /bin/launchctl disable "system/${SERVICE_LABEL}"
+  /bin/launchctl bootout "system/${SERVICE_LABEL}" 2>/dev/null || true
+  /bin/sleep 1
+  # A graceful stop removes this marker itself. If it remains after a crash or
+  # forced stop, clear only the override that GoodMorning recorded as its own.
+  if [[ -e "${STATE_FILE}" ]]; then
+    /usr/bin/pmset disablesleep 0
+    /bin/rm -f "${STATE_FILE}"
+  fi
+  print "GoodMorning is off. Normal sleep behavior is active."
+  service_status
 }
 
 case "${1:-}" in
@@ -292,6 +349,23 @@ case "${1:-}" in
       print -- "airplay=$(( SNAP_AIRPLAY )) video=${SNAP_PLAYER} ac=$(( SNAP_AC )) battery=${SNAP_BATTERY}% thermal=$(thermal_name "${SNAP_THERMAL}") eligible=true"
     else
       print -- "airplay=$(( SNAP_AIRPLAY )) video=${SNAP_PLAYER} ac=$(( SNAP_AC )) battery=${SNAP_BATTERY}% thermal=$(thermal_name "${SNAP_THERMAL}") eligible=false"
+    fi
+    ;;
+  status)
+    service_status
+    ;;
+  on)
+    service_on
+    ;;
+  off)
+    service_off
+    ;;
+  toggle)
+    require_root_control toggle
+    if service_is_running; then
+      service_off
+    else
+      service_on
     fi
     ;;
   --self-test)

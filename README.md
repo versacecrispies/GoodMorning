@@ -115,6 +115,32 @@ Check the latest activity with:
 tail -f /var/log/goodmorning.log
 ```
 
+## Turn the watchdog on or off
+
+Installation turns GoodMorning on by default. Check its current state with:
+
+```sh
+./goodmorning.zsh status
+```
+
+Use the persistent toggle to switch it between running and stopped:
+
+```sh
+sudo ./goodmorning.zsh toggle
+```
+
+You can also choose the state explicitly:
+
+```sh
+sudo ./goodmorning.zsh on
+sudo ./goodmorning.zsh off
+```
+
+The `off` command unloads the watchdog, disables automatic startup across
+reboots, and restores normal sleep if GoodMorning owns the active override. It
+does not uninstall any files. The `on` command enables automatic startup and
+loads the watchdog again.
+
 When the override is active, this command reports `SleepDisabled = Yes`:
 
 ```sh

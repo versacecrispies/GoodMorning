@@ -180,3 +180,7 @@ Player support depends on the power assertion published by each application.
 If a player changes its process or assertion name, it may need a new detection
 rule. Reports from other Apple-silicon MacBook models and macOS versions are
 welcome.
+
+## License
+
+GoodMorning is available under the [MIT License](LICENSE).
